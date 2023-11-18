@@ -1,10 +1,12 @@
 import argparse
 import json
-import requests
-import pandas as pd
+from pathlib import Path
 from time import sleep
-from tqdm import tqdm
+
+import pandas as pd
+import requests
 from biothings_client import get_client
+from tqdm import tqdm
 
 
 def get_args():
@@ -17,25 +19,59 @@ def get_args():
 
 def gene_symbolizer(model, output_path):
 
-    def get_kegg_symbol(kegg_id):
-        url = f"http://rest.kegg.jp/get/{kegg_id}"
-        response = requests.get(url)
-        sleep(1)
-        if response.ok:
-            data = response.text
-            for line in data.split('\n'):
-                if line.startswith("SYMBOL"):
-                    return [s.strip() for s in
-                            line.split(" ", 1)[1].strip().split(',')][0], True
-        return None, False
+    def get_cpt2symbol_list(b_idx, batch_queries, output_dir):
 
-    data = []
+        cache_path = output_dir / f'{b_idx}.txt'
+        if cache_path.exists():
+            with open(cache_path, 'r') as f:
+                data = f.read()
+        else:
+            url = f"http://rest.kegg.jp/list/{batch_queries}"
+            response = requests.get(url)
+            sleep(1)
+            if response.ok:
+                data = response.text
+                with open(cache_path, 'w') as f:
+                    f.write(data)
+
+        cpt2symbol_list = []
+        for line in data.split('\n'):
+            if line == '':
+                continue
+            hsa, *others = line.split('\t')
+            symbols = ' '.join(others).split(';')[0]
+            symbol = [s.strip() for s in symbols.split(',')][0]
+            gene_id = hsa.split(':')[1]
+            cpt = f'Gene_{gene_id}'
+            cpt2symbol_list.append({'concept': cpt, 'symbol': symbol})
+        return cpt2symbol_list
+
+    queries = []
     for concept in tqdm(model.keys()):
         if concept[:len('Gene_')] == 'Gene_':
             kegg_id = concept[len('Gene_'):]
-            symbol, is_found = get_kegg_symbol(f'hsa:{kegg_id}')
-            if is_found:
-                data.append({'concept': concept, 'symbol': symbol})
+            try:
+                kegg_id = int(kegg_id)
+            except:
+                continue
+            query = f'hsa:{kegg_id}'
+            queries.append(query)
+    queries.sort(key=lambda x: int(x.split(':')[1]))
+
+    output_dir = Path('output/gene')
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    query_num = len(queries)
+    data = []
+    batch_size = 100
+    for b_idx in tqdm(list(range(query_num//batch_size + 1))):
+        start = b_idx * batch_size
+        end = min((b_idx + 1) * batch_size, query_num)
+        batch_queries = queries[start:end]
+        batch_queries = '+'.join(batch_queries)
+        cpt2symbol_list = get_cpt2symbol_list(b_idx, batch_queries, output_dir)
+        data.extend(cpt2symbol_list)
+
     df = pd.DataFrame(data)
     df.to_csv(output_path, index=False)
 

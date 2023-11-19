@@ -31,8 +31,10 @@ def gene_symbolizer(model, output_path):
             sleep(1)
             if response.ok:
                 data = response.text
-                with open(cache_path, 'w') as f:
-                    f.write(data)
+            else:
+                data = ''
+            with open(cache_path, 'w') as f:
+                f.write(data)
 
         cpt2symbol_list = []
         for line in data.split('\n'):

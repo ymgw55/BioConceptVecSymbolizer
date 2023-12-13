@@ -26,8 +26,11 @@ symbolize entity
 
 positional arguments:
   entity      choose entity in (gene, chemical)
+```
 
-$ python symbolizer.py gene # gene.csv
+For example, `gene.csv` is generated as follows
+```bash
+$ python symbolizer.py gene
 ```
 
 ## TODO
